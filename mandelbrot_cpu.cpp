@@ -320,6 +320,9 @@ int main(int argc, char *argv[]) {
         memset(result.data(), 0, sizeof(uint32_t) * img_size * img_size);
         BENCHPRESS(mandelbrot_cpu_vector, img_size, max_iters, result.data());
         dump_image("out/mandelbrot_cpu_vector.bmp", img_size, max_iters, result);
+
+        std::cout << "  Correctness: average output difference from reference = "
+                  << difference(img_size, max_iters, result, ref_result) << std::endl;
     }
 
     return 0;
