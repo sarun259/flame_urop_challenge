@@ -81,9 +81,10 @@ void mandelbrot_cpu_vector(uint32_t img_size, uint32_t max_iters, uint32_t *out)
                 iters_vec[k] = vdupq_n_u32(0);
                 mask[k] = vdupq_n_u32(0xffffffff);
             }
-
-            for (int k = 0; k < BLOCKSIZE; k++){
-                while (vmaxvq_u32(mask[k]) != 0 && vmaxvq_u32(iters_vec[k]) < max_iters) {
+            uint32_t total_iters = 0;
+            uint32_t active_mask = (1 << BLOCKSIZE) - 1;
+            while (active_mask != 0 && total_iters < max_iters) {
+                for (int k = 0; k < BLOCKSIZE; k++){
                     float32x4_t x_vec = vaddq_f32(vsubq_f32(x2_vec[k], y2_vec[k]), cx_vec[k]);
                     float32x4_t y_vec = vaddq_f32(vsubq_f32(vsubq_f32(w_vec[k], x2_vec[k]), y2_vec[k]), cy_vec);
                     x2_vec[k] = vmulq_f32(x_vec, x_vec);
@@ -94,10 +95,15 @@ void mandelbrot_cpu_vector(uint32_t img_size, uint32_t max_iters, uint32_t *out)
                     iters_vec[k] = vaddq_u32(iters_vec[k], vandq_u32(mask[k], vdupq_n_u32(1)));
                     // update the mask
                     mask[k] = vandq_u32(mask[k], vcleq_f32(vaddq_f32(x2_vec[k], y2_vec[k]), vdupq_n_f32(4.0f)));
+                    if (vmaxvq_u32(mask[k]) == 0){
+                        active_mask &= ~(1 << k);
+                    }
+                    // Write result.
+                    vst1q_u32(out+i*img_size+j+4*k, iters_vec[k]);
                 }
 
-                // Write result.
-                vst1q_u32(out+i*img_size+j+4*k, iters_vec[k]);
+                // increment total_iters
+                total_iters++;
             }
             
         }
