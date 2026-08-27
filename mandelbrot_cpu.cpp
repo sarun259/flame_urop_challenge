@@ -5,7 +5,8 @@
 
 #include <cmath>
 #include <cstdint>
-#include <immintrin.h>
+// #include <immintrin.h>
+#include <arm_neon.h>
 
 // CPU Scalar Mandelbrot set generation.
 // Based on the "optimized escape time algorithm" in
