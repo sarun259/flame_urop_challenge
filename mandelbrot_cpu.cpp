@@ -3,6 +3,10 @@
 //  -b <max iterations>
 //  -i <implementation: {"scalar", "vector"}>
 
+// MY COMMANDS:
+// g++ -march=native -O3 -Wall -Wextra -ffp-contract=off -o mandelbrot mandelbrot_cpu.cpp
+// ./mandelbrot -r 3200 -b 100
+
 #include <cmath>
 #include <cstdint>
 // #include <immintrin.h>
@@ -42,7 +46,46 @@ void mandelbrot_cpu_scalar(uint32_t img_size, uint32_t max_iters, uint32_t *out)
 /// <--- your code here --->
 
 void mandelbrot_cpu_vector(uint32_t img_size, uint32_t max_iters, uint32_t *out) {
-    // TODO: Implement this function.
+    // operate on groups of 4 at a time
+    for (uint64_t i = 0; i < img_size; ++i) {
+        for (uint64_t j = 0; j < img_size; j += 4) {
+            // Get the plane coordinate X for the image pixel.
+            float32x4_t i_norm_vec = vdupq_n_f32(float(i) / float(img_size));
+            float32x4_t j_norm_vec = {
+                (float(j) / float(img_size)),
+                (float(j+1) / float(img_size)),
+                (float(j+2) / float(img_size)),
+                (float(j+3) / float(img_size))
+            };
+            float32x4_t cx_vec = vsubq_f32(vmulq_f32(j_norm_vec, vdupq_n_f32(2.5f)), vdupq_n_f32(2.0f));
+            float32x4_t cy_vec = vsubq_f32(vmulq_f32(i_norm_vec, vdupq_n_f32(2.5f)), vdupq_n_f32(1.25f));
+
+            // Innermost loop: start the recursion from z = 0.
+            float32x4_t x2_vec = vdupq_n_f32(0.0f);
+            float32x4_t y2_vec = vdupq_n_f32(0.0f);
+            float32x4_t w_vec = vdupq_n_f32(0.0f);
+            uint32x4_t iters_vec = vdupq_n_u32(0);
+
+            // since we can't check each condition individually, we keep track of a mask
+            // of which lanes are still going, and we stop once the mask is empty
+            uint32x4_t mask = vdupq_n_u32(0xffffffff);
+            while (vmaxvq_u32(mask) != 0 && vmaxvq_u32(iters_vec) < max_iters) {
+                float32x4_t x_vec = vaddq_f32(vsubq_f32(x2_vec, y2_vec), cx_vec);
+                float32x4_t y_vec = vaddq_f32(vsubq_f32(vsubq_f32(w_vec, x2_vec), y2_vec), cy_vec);
+                x2_vec = vmulq_f32(x_vec, x_vec);
+                y2_vec = vmulq_f32(y_vec, y_vec);
+                float32x4_t z_vec = vaddq_f32(x_vec, y_vec);
+                w_vec = vmulq_f32(z_vec, z_vec);
+                // iters should only be incremented for the ones still alive in the mask
+                iters_vec = vaddq_u32(iters_vec, vandq_u32(mask, vdupq_n_u32(1)));
+                // update the mask
+                mask = vandq_u32(mask, vcleq_f32(vaddq_f32(x2_vec, y2_vec), vdupq_n_f32(4.0f)));
+            }
+
+            // Write result.
+            vst1q_u32(out+i*img_size+j, iters_vec);
+        }
+    }
 }
 
 /// <--- /your code here --->
