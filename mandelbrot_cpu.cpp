@@ -4,13 +4,14 @@
 //  -i <implementation: {"scalar", "vector"}>
 
 // MY COMMANDS:
-// g++ -march=native -O3 -Wall -Wextra -ffp-contract=off -o mandelbrot mandelbrot_cpu.cpp
+// ~/opencilk/bin/clang++ -fopencilk -O3 -march=native -ffp-contract=off -o mandelbrot mandelbrot_cpu.cpp
 // ./mandelbrot -r 3200 -b 100
 
 #include <cmath>
 #include <cstdint>
 // #include <immintrin.h>
 #include <arm_neon.h>
+#include <cilk/cilk.h>
 
 // CPU Scalar Mandelbrot set generation.
 // Based on the "optimized escape time algorithm" in
@@ -51,7 +52,7 @@ void mandelbrot_cpu_vector(uint32_t img_size, uint32_t max_iters, uint32_t *out)
     // operate on groups of 4*BLOCKSIZE at a time
     // so BLOCKSIZE sets of registers
     float float_img_size = float(img_size);
-    for (uint64_t i = 0; i < img_size; ++i) {
+    cilk_for (uint64_t i = 0; i < img_size; ++i) {
         float32x4_t i_norm_vec = vdupq_n_f32(float(i) / float(img_size));
         float32x4_t cy_vec = vsubq_f32(vmulq_f32(i_norm_vec, vdupq_n_f32(2.5f)), vdupq_n_f32(1.25f));
         for (uint64_t j = 0; j < img_size; j += 4*BLOCKSIZE) {
