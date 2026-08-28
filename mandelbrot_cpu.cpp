@@ -333,6 +333,22 @@ int main(int argc, char *argv[]) {
 
         std::cout << "  Correctness: average output difference from reference = "
                   << difference(img_size, max_iters, result, ref_result) << std::endl;
+
+        uint64_t useful_iterations = 0;
+        uint64_t total_iterations = 0;
+        for (uint64_t i = 0; i < img_size; i++){
+            for (uint64_t j = 0; j < img_size; j += 4){
+                uint32_t it[4];
+                for (int k = 0; k < 4; k++){
+                    it[k] = result[img_size * i + j + k];
+                }
+                useful_iterations += it[0] + it[1] + it[2] + it[3];
+                total_iterations += fmax(fmax(it[0], it[1]), fmax(it[2], it[3])) * 4;
+            }
+        }
+        std::cout << " Useful Iteration: " << useful_iterations 
+                    << "\nTotal Iterations: " << total_iterations
+                    << "\nEfficiency: " << (float)useful_iterations / (float)total_iterations;
     }
 
     return 0;
