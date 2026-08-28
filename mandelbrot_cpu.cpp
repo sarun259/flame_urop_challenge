@@ -55,15 +55,25 @@ struct Task{
 Task getTask(uint32_t img_size, int index){
     Task output;
     
-    output.i[0] = (4 * index) / img_size;
-    output.i[1] = (4 * index) / img_size;
-    output.i[2] = (4 * index) / img_size;
-    output.i[3] = (4 * index) / img_size;
+    // output.i[0] = (4 * index) / img_size;
+    // output.i[1] = (4 * index) / img_size;
+    // output.i[2] = (4 * index) / img_size;
+    // output.i[3] = (4 * index) / img_size;
 
-    output.j[0] = (4 * index) % img_size;
-    output.j[1] = ((4 * index) % img_size) + 1;
-    output.j[2] = ((4 * index) % img_size) + 2;
-    output.j[3] = ((4 * index) % img_size) + 3;
+    // output.j[0] = (4 * index) % img_size;
+    // output.j[1] = ((4 * index) % img_size) + 1;
+    // output.j[2] = ((4 * index) % img_size) + 2;
+    // output.j[3] = ((4 * index) % img_size) + 3;
+
+    output.i[0] = (2 * index) / img_size;
+    output.i[1] = (2 * index) / img_size;
+    output.i[2] = img_size - 1 - ((2 * index) / img_size);
+    output.i[3] = img_size - 1 - ((2 * index) / img_size);
+
+    output.j[0] = (2 * index) % img_size;
+    output.j[1] = ((2 * index) % img_size) + 1;
+    output.j[2] = (2 * index) % img_size;
+    output.j[3] = ((2 * index) % img_size) + 1;
 
     return output;
 }
