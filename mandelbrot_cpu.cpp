@@ -86,6 +86,9 @@ void mandelbrot_cpu_vector(uint32_t img_size, uint32_t max_iters, uint32_t *out)
             uint32_t active_mask = (1 << BLOCKSIZE) - 1;
             while (active_mask != 0 && total_iters < max_iters) {
                 for (int k = 0; k < BLOCKSIZE; k++){
+                    if ((active_mask & (1 << k)) == 0){
+                        continue;
+                    }
                     float32x4_t x_vec = vaddq_f32(vsubq_f32(x2_vec[k], y2_vec[k]), cx_vec[k]);
                     float32x4_t y_vec = vaddq_f32(vsubq_f32(vsubq_f32(w_vec[k], x2_vec[k]), y2_vec[k]), cy_vec);
                     x2_vec[k] = vmulq_f32(x_vec, x_vec);
