@@ -48,68 +48,100 @@ void mandelbrot_cpu_scalar(uint32_t img_size, uint32_t max_iters, uint32_t *out)
 
 #define BLOCKSIZE 4
 
+struct Task{
+    uint64_t i[4], j[4];
+};
+
+Task getTask(uint32_t img_size, int index){
+    Task output;
+    
+    output.i[0] = (4 * index) / img_size;
+    output.i[1] = (4 * index) / img_size;
+    output.i[2] = (4 * index) / img_size;
+    output.i[3] = (4 * index) / img_size;
+
+    output.j[0] = (4 * index) % img_size;
+    output.j[1] = ((4 * index) % img_size) + 1;
+    output.j[2] = ((4 * index) % img_size) + 2;
+    output.j[3] = ((4 * index) % img_size) + 3;
+
+    return output;
+}
+
 void mandelbrot_cpu_vector(uint32_t img_size, uint32_t max_iters, uint32_t *out) {
     // operate on groups of 4*BLOCKSIZE at a time
     // so BLOCKSIZE sets of registers
     float float_img_size = float(img_size);
-    cilk_for (uint64_t i = 0; i < img_size; ++i) {
-        float32x4_t i_norm_vec = vdupq_n_f32(float(i) / float(img_size));
-        float32x4_t cy_vec = vsubq_f32(vmulq_f32(i_norm_vec, vdupq_n_f32(2.5f)), vdupq_n_f32(1.25f));
-        for (uint64_t j = 0; j < img_size; j += 4*BLOCKSIZE) {
-            // Get the plane coordinate X for the image pixel.
-            
-            float32x4_t j_norm_vec[BLOCKSIZE];
-            for (int k = 0; k < BLOCKSIZE; k++){
-                j_norm_vec[k] = {
-                    (float(j+4*k) / float_img_size),
-                    (float(j+4*k+1) / float_img_size),
-                    (float(j+4*k+2) / float_img_size),
-                    (float(j+4*k+3) / float_img_size)
-                };
-            }
-            float32x4_t cx_vec[BLOCKSIZE];
-            for (int k = 0; k < BLOCKSIZE; k++){
-                cx_vec[k] = vsubq_f32(vmulq_f32(j_norm_vec[k], vdupq_n_f32(2.5f)), vdupq_n_f32(2.0f));
-            }
-            
-            // Innermost loop: start the recursion from z = 0.
-            float32x4_t x2_vec[BLOCKSIZE], y2_vec[BLOCKSIZE], w_vec[BLOCKSIZE];
-            uint32x4_t iters_vec[BLOCKSIZE], mask[BLOCKSIZE];
-            for (int k = 0; k < BLOCKSIZE; k++){
-                x2_vec[k] = vdupq_n_f32(0.0f);
-                y2_vec[k] = vdupq_n_f32(0.0f);
-                w_vec[k] = vdupq_n_f32(0.0f);
-                iters_vec[k] = vdupq_n_u32(0);
-                mask[k] = vdupq_n_u32(0xffffffff);
-            }
-            uint32_t total_iters = 0;
-            uint32_t active_mask = (1 << BLOCKSIZE) - 1;
-            while (active_mask != 0 && total_iters < max_iters) {
-                for (int k = 0; k < BLOCKSIZE; k++){
-                    if ((active_mask & (1 << k)) == 0){
-                        continue;
-                    }
-                    float32x4_t x_vec = vaddq_f32(vsubq_f32(x2_vec[k], y2_vec[k]), cx_vec[k]);
-                    float32x4_t y_vec = vaddq_f32(vsubq_f32(vsubq_f32(w_vec[k], x2_vec[k]), y2_vec[k]), cy_vec);
-                    x2_vec[k] = vmulq_f32(x_vec, x_vec);
-                    y2_vec[k] = vmulq_f32(y_vec, y_vec);
-                    float32x4_t z_vec = vaddq_f32(x_vec, y_vec);
-                    w_vec[k] = vmulq_f32(z_vec, z_vec);
-                    // iters should only be incremented for the ones still alive in the mask
-                    iters_vec[k] = vaddq_u32(iters_vec[k], vandq_u32(mask[k], vdupq_n_u32(1)));
-                    // update the mask
-                    mask[k] = vandq_u32(mask[k], vcleq_f32(vaddq_f32(x2_vec[k], y2_vec[k]), vdupq_n_f32(4.0f)));
-                    if (vmaxvq_u32(mask[k]) == 0){
-                        active_mask &= ~(1 << k);
-                    }
-                    // Write result.
-                    vst1q_u32(out+i*img_size+j+4*k, iters_vec[k]);
-                }
+    cilk_for (int index = 0; index < (img_size * img_size) / 4; index += BLOCKSIZE) {
+        Task tasks[BLOCKSIZE];
+        for (int k = 0; k < BLOCKSIZE; k++){
+            tasks[k] = getTask(img_size, index + k);
+        }
+        // Get the plane coordinate X for the image pixel.
+        float32x4_t i_norm_vec[BLOCKSIZE], j_norm_vec[BLOCKSIZE];
+        for (int k = 0; k < BLOCKSIZE; k++){
+            i_norm_vec[k] = {
+                (float(tasks[k].i[0]) / float_img_size),
+                (float(tasks[k].i[1]) / float_img_size),
+                (float(tasks[k].i[2]) / float_img_size),
+                (float(tasks[k].i[3]) / float_img_size)
+            };
+            j_norm_vec[k] = {
+                (float(tasks[k].j[0]) / float_img_size),
+                (float(tasks[k].j[1]) / float_img_size),
+                (float(tasks[k].j[2]) / float_img_size),
+                (float(tasks[k].j[3]) / float_img_size)
+            };
 
-                // increment total_iters
-                total_iters++;
+        }
+        float32x4_t cx_vec[BLOCKSIZE], cy_vec[BLOCKSIZE];
+        for (int k = 0; k < BLOCKSIZE; k++){
+            cx_vec[k] = vsubq_f32(vmulq_f32(j_norm_vec[k], vdupq_n_f32(2.5f)), vdupq_n_f32(2.0f));
+            cy_vec[k] = vsubq_f32(vmulq_f32(i_norm_vec[k], vdupq_n_f32(2.5f)), vdupq_n_f32(1.25f));
+        }
+        
+        // Innermost loop: start the recursion from z = 0.
+        float32x4_t x2_vec[BLOCKSIZE], y2_vec[BLOCKSIZE], w_vec[BLOCKSIZE];
+        uint32x4_t iters_vec[BLOCKSIZE], mask[BLOCKSIZE];
+        for (int k = 0; k < BLOCKSIZE; k++){
+            x2_vec[k] = vdupq_n_f32(0.0f);
+            y2_vec[k] = vdupq_n_f32(0.0f);
+            w_vec[k] = vdupq_n_f32(0.0f);
+            iters_vec[k] = vdupq_n_u32(0);
+            mask[k] = vdupq_n_u32(0xffffffff);
+        }
+        uint32_t total_iters = 0;
+        uint32_t active_mask = (1 << BLOCKSIZE) - 1;
+        while (active_mask != 0 && total_iters < max_iters) {
+            for (int k = 0; k < BLOCKSIZE; k++){
+                if ((active_mask & (1 << k)) == 0){
+                    continue;
+                }
+                float32x4_t x_vec = vaddq_f32(vsubq_f32(x2_vec[k], y2_vec[k]), cx_vec[k]);
+                float32x4_t y_vec = vaddq_f32(vsubq_f32(vsubq_f32(w_vec[k], x2_vec[k]), y2_vec[k]), cy_vec[k]);
+                x2_vec[k] = vmulq_f32(x_vec, x_vec);
+                y2_vec[k] = vmulq_f32(y_vec, y_vec);
+                float32x4_t z_vec = vaddq_f32(x_vec, y_vec);
+                w_vec[k] = vmulq_f32(z_vec, z_vec);
+                // iters should only be incremented for the ones still alive in the mask
+                iters_vec[k] = vaddq_u32(iters_vec[k], vandq_u32(mask[k], vdupq_n_u32(1)));
+                // update the mask
+                mask[k] = vandq_u32(mask[k], vcleq_f32(vaddq_f32(x2_vec[k], y2_vec[k]), vdupq_n_f32(4.0f)));
+                if (vmaxvq_u32(mask[k]) == 0){
+                    active_mask &= ~(1 << k);
+                }
             }
-            
+
+            // increment total_iters
+            total_iters++;
+        }
+        
+        // write result
+        for (int k = 0; k < BLOCKSIZE; k++){
+            out[tasks[k].i[0]*img_size + tasks[k].j[0]] = vgetq_lane_u32(iters_vec[k], 0);
+            out[tasks[k].i[1]*img_size + tasks[k].j[1]] = vgetq_lane_u32(iters_vec[k], 1);
+            out[tasks[k].i[2]*img_size + tasks[k].j[2]] = vgetq_lane_u32(iters_vec[k], 2);
+            out[tasks[k].i[3]*img_size + tasks[k].j[3]] = vgetq_lane_u32(iters_vec[k], 3);
         }
     }
 }
